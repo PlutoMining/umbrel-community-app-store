@@ -4,7 +4,7 @@ name: Pluto Next
 category: bitcoin
 version: "1.3.3"
 tagline: Pluto
-icon: https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/icon.jpg
+icon: https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/icon.jpg
 description: >
   Pluto is an advanced platform designed for open source miners. It provides a comprehensive and improved mining experience with enhanced features and functionalities.
 developer: Pluto
@@ -14,13 +14,13 @@ repo: https://github.com/PlutoMining/pluto
 support: https://github.com/PlutoMining/pluto/issues
 port: 7677
 gallery:
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_00.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_01.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_02.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_03.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_04.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_05.png
-  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/main/pluto-mining-pluto-next/images/screenshot_06.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_00.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_01.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_02.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_03.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_04.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_05.png
+  - https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/screenshot_06.png
 path: ""
 defaultPassword: ""
 releaseNotes: >
@@ -28,10 +28,7 @@ releaseNotes: >
   - Rebranding
   - Dark mode
   - NerdAxe support
-
 submitter: Pluto
 submission:
   defaultUsername: admin
   deterministicPassword: true
-
-
