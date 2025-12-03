@@ -13,20 +13,42 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
-
-      - name: Install Docker Compose
-        uses: docker/setup-buildx-action@v3
+      # Docker and docker compose are already available on ubuntu-latest,
+      # so we don't need a separate setup step.
 
       - name: Validate pluto-mining-pluto docker-compose.yml
         run: |
           if [ -f pluto-mining-pluto/docker-compose.yml ]; then
-            docker compose -f pluto-mining-pluto/docker-compose.yml config >/dev/null
+            # Define a minimal app_proxy service with an image so that Docker Compose
+            # validation succeeds. On Umbrel, the real app_proxy image is injected
+            # by the platform, so we intentionally keep it out of the app's compose file.
+            printf '%s\n' \
+              "services:" \
+              "  app_proxy:" \
+              "    image: alpine:3.19" \
+              > /tmp/app_proxy.base.yml
+
+            APP_DATA_DIR=/tmp APP_PASSWORD=dummy \
+              docker compose \
+                -f /tmp/app_proxy.base.yml \
+                -f pluto-mining-pluto/docker-compose.yml \
+                config >/dev/null
           fi
 
       - name: Validate pluto-mining-pluto-next docker-compose.yml
         run: |
           if [ -f pluto-mining-pluto-next/docker-compose.yml ]; then
-            docker compose -f pluto-mining-pluto-next/docker-compose.yml config >/dev/null
+            printf '%s\n' \
+              "services:" \
+              "  app_proxy:" \
+              "    image: alpine:3.19" \
+              > /tmp/app_proxy.base.yml
+
+            APP_DATA_DIR=/tmp APP_PASSWORD=dummy \
+              docker compose \
+                -f /tmp/app_proxy.base.yml \
+                -f pluto-mining-pluto-next/docker-compose.yml \
+                config >/dev/null
           fi
 
 
