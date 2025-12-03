@@ -23,12 +23,13 @@ services:
 
   backend:
     image: ghcr.io/plutomining/pluto-backend:1.1.2@sha256:9757b7ba547b55f975513b5fe8d7b91dd532f3a862c7fa7fb4f72ee98bed1758
+    container_name: pluto-mining-pluto_backend_1
     pid: host
     restart: on-failure
     environment:
       - PORT=7776
       - AUTO_LISTEN=true
-      - DISCOVERY_SERVICE_HOST=http://pluto-mining-pluto_discovery_1:7775
+      - DISCOVERY_SERVICE_HOST=http://172.17.0.1:7775
       - GF_HOST=http://pluto-mining-pluto_grafana_1:3000
       - DELETE_DATA_ON_DEVICE_REMOVE=true
     volumes:
@@ -43,6 +44,7 @@ services:
 
   frontend:
     image: ghcr.io/plutomining/pluto-frontend:1.1.4@sha256:b9a48c99392daf37bdbf53be9963fa6b9a5873c60d205056e49f08285b8ea106
+    container_name: pluto-mining-pluto_frontend_1
     pid: host
     restart: on-failure
     depends_on:
@@ -57,8 +59,10 @@ services:
 
   prometheus:
     image: ghcr.io/plutomining/pluto-prometheus:1.1.2@sha256:64bdc2c383e17df9925fe4fbe0dd2972b52616dcfb51489f0aa487307f19c53c
+    container_name: pluto-mining-pluto_prometheus_1
     volumes:
       - ${APP_DATA_DIR}/data/prometheus:/prometheus
+      - ${APP_DATA_DIR}/data/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     pid: host
     healthcheck:
       test:
@@ -67,10 +71,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    user: "65534:65534"
+    user: "1000:1000"
 
   grafana:
     image: ghcr.io/plutomining/pluto-grafana:1.1.3@sha256:a268c8cd80f109a37afab74d6c1bc03beb093b795b4720ce2c5bdab326656640
+    container_name: pluto-mining-pluto_grafana_1
     pid: host
     environment:
       - GF_SECURITY_ADMIN_USER=admin
@@ -78,6 +83,7 @@ services:
       - GF_INSTALL_PLUGINS=marcusolsson-treemap-panel
     volumes:
       - ${APP_DATA_DIR}/data/grafana:/var/lib/grafana
+      - ${APP_DATA_DIR}/data/grafana/provisioning/datasources/main.yaml:/etc/grafana/provisioning/datasources/main.yaml:ro
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -88,6 +94,6 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
-    user: "472:472"
+    user: "1000:1000"
 
 

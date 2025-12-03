@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://pluto-mining-pluto-next_prometheus_1:9090
+    isDefault: true
+    editable: false
+
