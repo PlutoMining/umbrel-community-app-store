@@ -1,17 +1,74 @@
-## Umbrel Community App Store Template
+## Pluto Mining Umbrel Community App Store
 
-This repository is a template to create an Umbrel Community App Store. These additional app stores allow developers to distribute applications without submitting to the [Official Umbrel App Store](https://github.com/getumbrel/umbrel-apps).
+This repository hosts the **Pluto Mining** Umbrel Community App Store. It lets you install and test Pluto directly from a custom store, without waiting for the official Umbrel app store.
 
-## How to use:
+The structure follows the official template from [`getumbrel/umbrel-community-app-store`](https://github.com/getumbrel/umbrel-community-app-store).
 
-1. Start by clicking the "Use this template" button located above.
-2. Assign an ID and name to your app store within the `umbrel-app-store.yml` file. This file specifies two important attributes:
-    - `id` - Acts as a unique prefix for every app within your Community App Store. You must start your application's ID with your app store's ID. For instance, in this template, the app store ID is `sparkles`, and there's an app named `hello world`. Consequently, the app's ID should be: `sparkles-hello-world`.
-    - `name` - This is the name of the Community App Store displayed in the umbrelOS UI.
-3. Change the name of the `sparkles-hello-world` folder to match your app's ID. The app ID is for you to decide. For example, if your app store ID is `whistles`, and your app is named My Video Downloader, you could set its app ID to `whistles-my-video-downloader`, and rename the folder accordingly.
-4. Next, enter your app's listing details in the `whistles-my-video-downloader/umbrel-app.yml`. These are displayed in the umbrelOS UI.
-5. Include the necessary Docker services in `whistles-my-video-downloader/docker-compose.yml`.
-6. That's it! Your Community App Store, featuring your unique app, is now set up and ready to go. To use your Community App Store, you can add its GitHub url the umbrelOS user interface as shown in the following demo:
+### Store metadata
 
+- Store ID: `pluto-mining` (see `umbrel-app-store.yml`)
+- Apps:
+  - `pluto-mining-pluto` – Pluto stable channel
+  - `pluto-mining-pluto-next` – Pluto beta channel (pluto-next)
+
+
+## Installation
+
+To install this on your umbrel, you can add this repository through the Umbrel user interface as shown in the following demo:
+
+
+### Adding this store to Umbrel OS
+
+On your Umbrel OS box, add the Pluto Mining store 
+
+#### Via UI
 
 https://user-images.githubusercontent.com/10330103/197889452-e5cd7e96-3233-4a09-b475-94b754adc7a3.mp4
+
+
+#### Using the Umbrel CLI
+
+```bash
+sudo ~/umbrel/scripts/repo add https://github.com/PlutoMining/umbrel-community-app-store.git
+
+sudo ~/umbrel/scripts/repo update
+```
+
+If you want to remove the app store
+
+```bash
+sudo ~/umbrel/scripts/repo remove https://github.com/PlutoMining/umbrel-community-app-store.git
+```
+
+After a short refresh, the **Pluto Mining** store and its apps will be visible in the Umbrel UI.
+
+### Installing Pluto from this store
+
+You can install the apps either from the Umbrel UI or via the CLI:
+
+- Install **Pluto (stable)**:
+
+```bash
+sudo ~/umbrel/scripts/app install pluto-mining-pluto
+```
+
+- Install **Pluto Next (beta)**:
+
+```bash
+sudo ~/umbrel/scripts/app install pluto-mining-pluto-next
+```
+
+Upgrades are handled by re-running the same install command or from the UI once new versions are published to this repo.
+
+### How this repo is updated
+
+The main Pluto repo (`PlutoMining/pluto`) owns the Umbrel manifests for both channels in `umbrel-apps/pluto` and `umbrel-apps/pluto-next`. During stable and beta releases:
+
+- Pluto’s release scripts build and push Docker images.
+- The manifests in `umbrel-apps/pluto*` are updated with new versions and image digests.
+- A helper script in the Pluto repo (`scripts/sync-community-store.sh`) copies the latest manifests into:
+  - `pluto-mining-pluto/` for the stable app
+  - `pluto-mining-pluto-next/` for the beta app
+
+You should commit and push changes to this repo whenever new versions of Pluto are released so Umbrel can see them.
+

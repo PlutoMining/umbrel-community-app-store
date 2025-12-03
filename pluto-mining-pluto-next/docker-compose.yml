@@ -1,0 +1,117 @@
+services:
+  app_proxy:
+    environment:
+      APP_HOST: pluto-mining-pluto-next_frontend_1
+      APP_PORT: 7677
+    depends_on:
+      - frontend
+    restart: on-failure
+
+  mock:
+    image: ghcr.io/plutomining/pluto-mock:0.7.0-rc.2
+    ports:
+      - "7670:7670"
+      - "7651:7651"
+      - "7652:7652"
+      - "7653:7653"
+      - "7654:7654"
+      - "7655:7655"
+      - "7656:7656"
+      - "7657:7657"
+      - "7658:7658"
+      - "7659:7659"
+      - "7660:7660"
+    pid: host
+    restart: on-failure
+    environment:
+      - LISTING_PORT=7670
+      - PORTS=7651,7652,7653,7654,7655,7656,7657,7658,7659,7660
+      - LOGS_PUB_ENABLED=false
+    user: "1000:1000"
+
+  discovery:
+    image: ghcr.io/plutomining/pluto-discovery:1.1.2@sha256:0a68b82c33df70a6be0a1493c142f1f6bf9a03747bad6fe3b7c2cf75f52c9984
+    network_mode: "host"
+    pid: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: on-failure
+    environment:
+      - PORT=7675
+      - DETECT_MOCK_DEVICES=true
+      - MOCK_DISCOVERY_HOST=http://172.17.0.1:7670
+    volumes:
+      - ${APP_DATA_DIR}/data/leveldb:/home/node/app/data
+    user: "1000:1000"
+
+  backend:
+    image: ghcr.io/plutomining/pluto-backend:1.1.2@sha256:9757b7ba547b55f975513b5fe8d7b91dd532f3a862c7fa7fb4f72ee98bed1758
+    pid: host
+    restart: on-failure
+    environment:
+      - PORT=7676
+      - AUTO_LISTEN=true
+      - DISCOVERY_SERVICE_HOST=http://172.17.0.1:7675
+      - GF_HOST=http://pluto-mining-pluto-next_grafana_1:3000
+      - DELETE_DATA_ON_DEVICE_REMOVE=true
+    volumes:
+      - ${APP_DATA_DIR}/data/leveldb:/home/node/app/data
+      - ${APP_DATA_DIR}/data/grafana:/home/node/app/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    user: "1000:1000"
+
+  frontend:
+    image: ghcr.io/plutomining/pluto-frontend:1.1.4@sha256:b9a48c99392daf37bdbf53be9963fa6b9a5873c60d205056e49f08285b8ea106
+    pid: host
+    restart: on-failure
+    depends_on:
+      - backend
+    environment:
+      - PORT=7677
+      - GF_HOST=http://pluto-mining-pluto-next_grafana_1:3000
+      - BACKEND_DESTINATION_HOST=http://pluto-mining-pluto-next_backend_1:7676
+    volumes:
+      - ${APP_DATA_DIR}/umbrel-app.yml:/tmp/umbrel-app.yml:ro
+    user: "1000:1000"
+
+  prometheus:
+    image: ghcr.io/plutomining/pluto-prometheus:1.1.2@sha256:64bdc2c383e17df9925fe4fbe0dd2972b52616dcfb51489f0aa487307f19c53c
+    volumes:
+      - ${APP_DATA_DIR}/data/prometheus:/prometheus
+    pid: host
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget --spider --quiet http://localhost:9090/-/ready || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    user: "65534:65534"
+
+  grafana:
+    image: ghcr.io/plutomining/pluto-grafana:1.1.3@sha256:a268c8cd80f109a37afab74d6c1bc03beb093b795b4720ce2c5bdab326656640
+    pid: host
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${APP_PASSWORD}
+      - GF_INSTALL_PLUGINS=marcusolsson-treemap-panel
+    volumes:
+      - ${APP_DATA_DIR}/data/grafana:/var/lib/grafana
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget --spider --quiet http://localhost:3000/api/health || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    user: "472:472"
+
+
