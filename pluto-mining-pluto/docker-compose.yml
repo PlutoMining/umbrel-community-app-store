@@ -96,4 +96,3 @@ services:
         condition: service_healthy
     user: "1000:1000"
 
-
