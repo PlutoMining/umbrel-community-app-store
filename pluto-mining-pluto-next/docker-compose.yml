@@ -30,7 +30,7 @@ services:
     user: "1000:1000"
 
   discovery:
-    image: ghcr.io/plutomining/pluto-discovery:1.1.2@sha256:0a68b82c33df70a6be0a1493c142f1f6bf9a03747bad6fe3b7c2cf75f52c9984
+    image: ghcr.io/plutomining/pluto-discovery:1.1.3-beta.0@sha256:fbecef9fe6f444ddba4e052be83bb5665356de6c6c5cb9f50b623e6113c1fd91
     network_mode: "host"
     pid: host
     cap_add:
@@ -46,7 +46,7 @@ services:
     user: "1000:1000"
 
   backend:
-    image: ghcr.io/plutomining/pluto-backend:1.1.2@sha256:9757b7ba547b55f975513b5fe8d7b91dd532f3a862c7fa7fb4f72ee98bed1758
+    image: ghcr.io/plutomining/pluto-backend:1.1.3-beta.0@sha256:1af39f308ab82c5d633212582886b79522343a350e0120bbafed6383e876b538
     container_name: pluto-mining-pluto-next_backend_1
     pid: host
     restart: on-failure
@@ -67,7 +67,7 @@ services:
     user: "1000:1000"
 
   frontend:
-    image: ghcr.io/plutomining/pluto-frontend:1.1.4@sha256:b9a48c99392daf37bdbf53be9963fa6b9a5873c60d205056e49f08285b8ea106
+    image: ghcr.io/plutomining/pluto-frontend:1.1.5-beta.0@sha256:ff49ec25556ff1c7d542eeba0813cbd39f5c556a3cf3b79a7e39af3baa007e51
     container_name: pluto-mining-pluto-next_frontend_1
     pid: host
     restart: on-failure
