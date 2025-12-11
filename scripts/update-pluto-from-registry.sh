@@ -182,10 +182,29 @@ extract_image_version() {
   
   # Extract version from image line like: image: ghcr.io/plutomining/pluto-backend:1.1.2@sha256:...
   # Uses POSIX-compliant [[:space:]] character class for portability
-  grep -A 20 "^[[:space:]]*${service}:" "$compose_file" 2>/dev/null | \
-    grep -E "^[[:space:]]+image:" | \
-    sed -E 's|.*:([0-9]+\.[0-9]+\.[0-9]+(-[^@]+)?)@.*|\1|' | \
-    head -1
+  # Match only top-level service definitions (not references in depends_on sections)
+  # by finding the service block and extracting the image version from within that block only
+  # We stop at the next top-level service definition to avoid matching nested references
+  local in_service=0
+  while IFS= read -r line; do
+    # Check if this is a top-level service definition (service name followed by colon at start of line)
+    if [[ "$line" =~ ^[[:space:]]*[a-zA-Z0-9_-]+:[[:space:]]*$ ]]; then
+      # Check if it's our target service
+      if [[ "$line" =~ ^[[:space:]]*${service}:[[:space:]]*$ ]]; then
+        in_service=1
+      else
+        # Different service started, stop processing
+        in_service=0
+      fi
+    elif [[ $in_service -eq 1 ]] && [[ "$line" =~ ^[[:space:]]+image: ]]; then
+      # Found image line within our target service block
+      # Extract version using sed
+      echo "$line" | sed -E 's|.*:([0-9]+\.[0-9]+\.[0-9]+(-[^@]+)?)@.*|\1|'
+      return 0
+    fi
+  done < "$compose_file"
+
+  return 1
 }
 
 # Get the latest version tag from GHCR
