@@ -8,6 +8,8 @@ set -euo pipefail
 #   - Updates docker-compose.yml with pinned image digests (preserves indentation style)
 #   - Detects version changes including transitions between stable and beta channels
 #   - Bumps umbrel-app.yml version when the bundle changes
+#   - Fetches release notes from CHANGELOG.md for stable releases
+#   - Provides interactive prompt to edit release notes (unless --no-prompt is used)
 #   - Optionally commits and pushes changes
 #
 # Beta channel behavior:
@@ -19,94 +21,40 @@ set -euo pipefail
 # It mirrors the version-bump behavior implemented in the main Pluto repo.
 # The script is indentation-agnostic and works with any YAML indentation style.
 
-STORE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Determine script directory and source common utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/pluto-common.sh"
 
+# Load environment variables from .env file if present
+load_env_file "$STORE_ROOT"
+
+# Source all library modules
+source "${SCRIPT_DIR}/lib/pluto-versions.sh"
+source "${SCRIPT_DIR}/lib/pluto-docker.sh"
+source "${SCRIPT_DIR}/lib/pluto-changelog.sh"
+source "${SCRIPT_DIR}/lib/pluto-release-notes.sh"
+source "${SCRIPT_DIR}/lib/pluto-git.sh"
+source "${SCRIPT_DIR}/lib/pluto-list.sh"
+
+# Main script state variables
 CHANNEL=""
 NO_COMMIT=false
 DRY_RUN=false
 LIST_VERSIONS=false
 CHANGES_MADE=false
 NEW_APP_VERSION=""
-
-DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/plutomining}"
-
-# Load .env file if present, preserving command-line environment variables
-# Usage: load_env_file SCRIPT_ROOT [VAR1 VAR2 ...]
-# If additional variable names are provided, they will also be preserved from command-line
-load_env_file() {
-  local script_root="$1"
-  shift
-  local preserve_vars=("$@")
-  local env_file="${script_root}/.env"
-  
-  # Save existing values if set (always preserve GITHUB_USERNAME and GITHUB_TOKEN)
-  local saved_github_username="${GITHUB_USERNAME:-}"
-  local saved_github_token="${GITHUB_TOKEN:-}"
-  
-  # Save any additional variables that were requested
-  declare -A saved_vars
-  for var in "${preserve_vars[@]}"; do
-    # Use indirect variable reference to check if variable is set
-    if [[ -n "${!var:-}" ]]; then
-      saved_vars["$var"]="${!var}"
-    fi
-  done
-  
-  # Load .env file if it exists
-  if [[ -f "${env_file}" ]]; then
-    # shellcheck disable=SC1090
-    set -a
-    source "${env_file}"
-    set +a
-  fi
-  
-  # Restore command-line values if they were set (takes precedence over .env)
-  if [[ -n "$saved_github_username" ]]; then
-    GITHUB_USERNAME="$saved_github_username"
-  fi
-  if [[ -n "$saved_github_token" ]]; then
-    GITHUB_TOKEN="$saved_github_token"
-  fi
-  
-  # Restore additional preserved variables
-  for var in "${!saved_vars[@]}"; do
-    eval "${var}=\"${saved_vars[$var]}\""
-  done
-}
-
-# Load environment variables from .env file if present
-load_env_file "$STORE_ROOT"
-
-log() {
-  echo "[update-pluto-from-registry] $*"
-}
-
-err() {
-  echo "[update-pluto-from-registry][error] $*" >&2
-  exit 1
-}
-
-# Cross-platform sed in-place editing
-# macOS (BSD sed) requires an extension argument for -i, Linux (GNU sed) doesn't
-sed_in_place() {
-  if [[ "$(uname)" == "Darwin" ]]; then
-    # macOS/BSD sed
-    sed -i '' "$@"
-  else
-    # Linux/GNU sed
-    sed -i "$@"
-  fi
-}
+NO_PROMPT=false
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") --channel stable|beta [--no-commit] [--dry-run] [--list-versions]
+Usage: $(basename "$0") --channel stable|beta [--no-commit] [--dry-run] [--list-versions] [--no-prompt]
 
 Options:
   --channel         stable | beta
   --no-commit       Skip git commit and push (default: false)
   --dry-run         Preview changes without modifying files (default: false)
   --list-versions   List current versions in the repository
+  --no-prompt       Skip interactive release notes prompt (default: false)
   -h, --help        Show this help
 
 Environment:
@@ -138,6 +86,10 @@ parse_args() {
         LIST_VERSIONS=true
         shift
         ;;
+      --no-prompt)
+        NO_PROMPT=true
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
@@ -163,323 +115,7 @@ ensure_args() {
   [[ "$CHANNEL" == "stable" || "$CHANNEL" == "beta" ]] || err "--channel must be stable or beta"
 }
 
-get_digest() {
-  local image="$1"
-  local manifest_json sha
-
-  if ! manifest_json=$(docker buildx imagetools inspect "$image" --format "{{json .Manifest}}" 2>&1); then
-    err "Failed to inspect image $image: $manifest_json"
-  fi
-
-  sha=$(echo "$manifest_json" | jq -r '.digest // empty')
-  [[ -n "$sha" && "$sha" != "null" ]] || err "Could not extract SHA256 digest from $image"
-  echo "${sha#sha256:}"
-}
-
-extract_image_version() {
-  local compose_file="$1"
-  local service="$2"
-  
-  # Extract version from image line like: image: ghcr.io/plutomining/pluto-backend:1.1.2@sha256:...
-  # Uses POSIX-compliant [[:space:]] character class for portability
-  # Match only top-level service definitions (not references in depends_on sections)
-  # by finding the service block and extracting the image version from within that block only
-  # We stop at the next top-level service definition to avoid matching nested references
-  local in_service=0
-  while IFS= read -r line; do
-    # Check if this is a top-level service definition (service name followed by colon at start of line)
-    if [[ "$line" =~ ^[[:space:]]*[a-zA-Z0-9_-]+:[[:space:]]*$ ]]; then
-      # Check if it's our target service
-      if [[ "$line" =~ ^[[:space:]]*${service}:[[:space:]]*$ ]]; then
-        in_service=1
-      else
-        # Different service started, stop processing
-        in_service=0
-      fi
-    elif [[ $in_service -eq 1 ]] && [[ "$line" =~ ^[[:space:]]+image: ]]; then
-      # Found image line within our target service block
-      # Extract version using sed
-      echo "$line" | sed -E 's|.*:([0-9]+\.[0-9]+\.[0-9]+(-[^@]+)?)@.*|\1|'
-      return 0
-    fi
-  done < "$compose_file"
-
-  return 1
-}
-
-# Get the latest version tag from GHCR
-# For beta channel: tries :beta tag first, falls back to :latest if :beta doesn't exist
-# For stable channel: always uses :latest tag
-# Outputs ONLY the version number to stdout, all logs go to stderr
-get_latest_version() {
-  local service="$1"
-  local channel="${2:-stable}"  # Default to stable if not provided
-  local image_base="${DOCKER_REGISTRY}/pluto-${service}"
-  
-  # Use GitHub API first (fastest and most reliable, doesn't require docker)
-  if command -v curl >/dev/null 2>&1 && [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    local package_name="pluto-${service}"
-    local api_url="https://api.github.com/orgs/plutomining/packages/container/${package_name}/versions"
-    
-    local versions_json
-    versions_json=$(curl -s --max-time 10 -H "Authorization: token ${GITHUB_TOKEN}" \
-                       -H "Accept: application/vnd.github.v3+json" \
-                       "$api_url" 2>/dev/null)
-    
-    # Check if response is valid (not an error message)
-    if [[ -n "$versions_json" && "$versions_json" != "null" && "$versions_json" != "" ]]; then
-      # Check if it's an error response
-      if echo "$versions_json" | jq -e '.message' >/dev/null 2>&1; then
-        echo "    ${service}: GitHub API error: $(echo "$versions_json" | jq -r '.message // "unknown error"')" >&2
-      else
-        # Response is valid, try to extract version
-        local version_tag=""
-        
-        if [[ "$channel" == "beta" ]]; then
-          # For beta channel: use the latest stable release UNLESS there is a HIGHER beta release
-          # - If 1.1.3-beta.0 (beta) and 1.1.3 (stable) both exist → select 1.1.3 (stable)
-          # - If only 1.1.4-beta.0 exists (no 1.1.4 stable) → select 1.1.4-beta.0
-          # - If 1.1.3 (stable) and 1.1.4-beta.0 (beta) exist → select 1.1.4-beta.0 (higher: 1.1.4 > 1.1.3)
-          
-          # Get all beta versions (e.g., 1.1.3-beta.0, 1.1.4-beta.0)
-          local beta_versions
-          beta_versions=$(echo "$versions_json" | jq -r \
-            '.[] | select(.metadata.container.tags[]? == "beta") | .metadata.container.tags[]' 2>/dev/null | \
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$' | sort -V)
-          
-          # Get all stable versions (e.g., 1.1.3, 1.1.2)
-          local stable_versions
-          stable_versions=$(echo "$versions_json" | jq -r \
-            '.[] | select(.metadata.container.tags[]? == "latest") | .metadata.container.tags[]' 2>/dev/null | \
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
-          
-          # Build candidate list: all stable versions + beta versions without stable counterparts
-          local candidate_versions=""
-          
-          # Add all stable versions
-          if [[ -n "$stable_versions" ]]; then
-            candidate_versions="$stable_versions"
-          fi
-          
-          # For each beta version, check if there's a corresponding stable version
-          while IFS= read -r beta_version; do
-            [[ -z "$beta_version" ]] && continue
-            # Extract base version (remove -beta.X suffix if present)
-            local base_version="${beta_version%-beta.*}"
-            # Check if this base version exists in stable versions
-            if ! echo "$stable_versions" | grep -qFx "$base_version"; then
-              # No stable version for this base, include the beta version
-              if [[ -z "$candidate_versions" ]]; then
-                candidate_versions="$beta_version"
-              else
-                candidate_versions="${candidate_versions}"$'\n'"${beta_version}"
-              fi
-            fi
-          done <<< "$beta_versions"
-          
-          # Pick the highest version from candidates
-          if [[ -n "$candidate_versions" ]]; then
-            version_tag=$(echo "$candidate_versions" | sort -V | tail -1)
-          fi
-          
-          # If no version found, fall back to latest
-          if [[ -z "$version_tag" || "$version_tag" == "null" || "$version_tag" == "" ]]; then
-            echo "    ${service}: no beta versions found, using 'latest'" >&2
-            version_tag=$(echo "$versions_json" | jq -r \
-              '.[] | select(.metadata.container.tags[]? == "latest") | .metadata.container.tags[]' 2>/dev/null | \
-              grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
-          fi
-        else
-          # For stable channel: use latest
-          version_tag=$(echo "$versions_json" | jq -r \
-            '.[] | select(.metadata.container.tags[]? == "latest") | .metadata.container.tags[]' 2>/dev/null | \
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
-        fi
-        
-        if [[ -n "$version_tag" && "$version_tag" != "null" && "$version_tag" != "" ]]; then
-          echo "$version_tag"
-          return 0
-        fi
-      fi
-    fi
-  elif [[ -z "${GITHUB_TOKEN:-}" ]]; then
-    echo "    ${service}: GITHUB_TOKEN not set, falling back to docker inspection" >&2
-  fi
-  
-  # Without GitHub API, we cannot reliably determine version numbers from :beta or :latest tags
-  # The docker-compose.yml requires specific version tags (e.g., :1.1.2), not floating tags
-  echo "[update-pluto-from-registry][error] GITHUB_TOKEN is required to determine image versions." >&2
-  echo "[update-pluto-from-registry][error] Set GITHUB_TOKEN environment variable or configure it in GitHub Actions." >&2
-  return 1
-}
-
-# Compare two semver versions and return the change type: "major", "minor", "patch", or "none"
-compare_semver_change() {
-  local old_version="$1"
-  local new_version="$2"
-  
-  # Remove any pre-release suffixes for comparison
-  local old_base="${old_version%%-*}"
-  local new_base="${new_version%%-*}"
-  
-  if [[ "$old_base" == "$new_base" ]]; then
-    echo "none"
-    return 0
-  fi
-  
-  # Parse versions
-  local old_major old_minor old_patch
-  local new_major new_minor new_patch
-  
-  IFS='.' read -r old_major old_minor old_patch <<<"$old_base"
-  IFS='.' read -r new_major new_minor new_patch <<<"$new_base"
-  
-  if [[ "$old_major" != "$new_major" ]]; then
-    echo "major"
-  elif [[ "$old_minor" != "$new_minor" ]]; then
-    echo "minor"
-  elif [[ "$old_patch" != "$new_patch" ]]; then
-    echo "patch"
-  else
-    echo "none"
-  fi
-}
-
-list_available_versions() {
-  log "Current configuration in this repository:"
-  log ""
-  
-  # Check stable channel
-  local stable_manifest="${STORE_ROOT}/pluto-mining-pluto/umbrel-app.yml"
-  local stable_compose="${STORE_ROOT}/pluto-mining-pluto/docker-compose.yml"
-  
-  if [[ -f "$stable_manifest" && -f "$stable_compose" ]]; then
-    local stable_app_version
-    stable_app_version=$(get_current_app_version "$stable_manifest" 2>/dev/null || echo "unknown")
-    local stable_image_version
-    stable_image_version=$(extract_image_version "$stable_compose" "backend" 2>/dev/null || echo "unknown")
-    
-    log "  Stable channel (pluto-mining-pluto):"
-    log "    Umbrel app version: ${stable_app_version}"
-    log "    Docker image tag:   ${stable_image_version}"
-    log ""
-  fi
-  
-  # Check beta channel
-  local beta_manifest="${STORE_ROOT}/pluto-mining-pluto-next/umbrel-app.yml"
-  local beta_compose="${STORE_ROOT}/pluto-mining-pluto-next/docker-compose.yml"
-  
-  if [[ -f "$beta_manifest" && -f "$beta_compose" ]]; then
-    local beta_app_version
-    beta_app_version=$(get_current_app_version "$beta_manifest" 2>/dev/null || echo "unknown")
-    local beta_image_version
-    beta_image_version=$(extract_image_version "$beta_compose" "backend" 2>/dev/null || echo "unknown")
-    
-    log "  Beta channel (pluto-mining-pluto-next):"
-    log "    Umbrel app version: ${beta_app_version}"
-    log "    Docker image tag:   ${beta_image_version}"
-    log ""
-  fi
-  
-  log "To find available Docker image versions to update to:"
-  log ""
-  log "1. Check GitHub Packages (shows all published image tags):"
-  log "   https://github.com/orgs/plutomining/packages?repo_name=pluto"
-  log ""
-  log "2. Check Pluto releases (shows what versions were released):"
-  log "   https://github.com/PlutoMining/pluto/releases"
-  log ""
-  log "3. Test a specific version exists:"
-  log "   docker buildx imagetools inspect ghcr.io/plutomining/pluto-backend:1.4.0"
-  log ""
-  log "Usage:"
-  log "  Run the script with --channel to re-resolve image digests:"
-  log "  ./scripts/update-pluto-from-registry.sh --channel stable"
-  log ""
-  log "  The script extracts each service's version from docker-compose.yml and"
-  log "  re-resolves their digests. The Umbrel app version will be bumped if"
-  log "  the image bundle changes."
-}
-
-compute_bundle_fingerprint() {
-  local file=$1
-  awk '
-    $1 ~ /^[a-zA-Z0-9_-]+:$/ { svc=substr($1, 1, length($1)-1) }
-    $1 == "image:" && svc != "" {
-      img=$2
-      gsub("\"", "", img)
-      printf "%s=%s\n", svc, img
-    }
-  ' "$file" | sort | sha256sum | awk '{print $1}'
-}
-
-get_current_app_version() {
-  local manifest="$1"
-  grep -E '^version:' "$manifest" | sed -E 's/version: "(.*)"/\1/'
-}
-
-bump_stable_version() {
-  local current="$1"
-  local base="$2"
-
-  if [[ -z "$current" ]]; then
-    echo "$base"
-    return
-  fi
-
-  local higher
-  higher=$(printf "%s\n%s\n" "$current" "$base" | sort -V | tail -n1)
-  if [[ "$higher" == "$base" && "$base" != "$current" ]]; then
-    echo "$base"
-  else
-    local major minor patch
-    IFS='.' read -r major minor patch <<<"$current"
-    patch=$((patch + 1))
-    echo "${major}.${minor}.${patch}"
-  fi
-}
-
-bump_beta_version() {
-  local current="$1"
-  local base="$2"
-
-  local cur_base cur_suffix
-  cur_base="${current%%-*}"
-  cur_suffix="${current#*-}"
-
-  if [[ "$cur_base" != "$base" || -z "$cur_suffix" ]]; then
-    echo "${base}-beta.0"
-    return
-  fi
-
-  if [[ "$cur_suffix" =~ ^beta\.([0-9]+)$ ]]; then
-    local n="${BASH_REMATCH[1]}"
-    n=$((n + 1))
-    echo "${base}-beta.${n}"
-  else
-    echo "${base}-beta.0"
-  fi
-}
-
-update_compose_images() {
-  local compose="$1"
-  shift
-  local pairs=("$@")
-
-  local pair svc img
-  for pair in "${pairs[@]}"; do
-    svc="${pair%%=*}"
-    img="${pair#*=}"
-    # Match service name with any indentation, then update image line within that service block
-    # Uses POSIX-compliant [[:space:]] character class for portability
-    # The pattern: find service line, then within that block (until next service or empty line), update image line
-    # This works regardless of indentation level (spaces or tabs) and preserves the original indentation
-    sed_in_place -E "/^[[:space:]]*${svc}:/,/^[[:space:]]*[a-zA-Z0-9_-]+:|^$/{
-      /^[[:space:]]+image:/s|^([[:space:]]+)image:.*|\1image: ${img}|
-    }" "$compose"
-  done
-}
-
+# Main update function - orchestrates the update process
 update_app() {
   local app_dir="$1"
   local manifest="${app_dir}/umbrel-app.yml"
@@ -677,9 +313,44 @@ update_app() {
   log "Current app version for ${app_dir}: $current_version"
   log "New app version for ${app_dir}:     $next_version"
 
+  # Step 6: Fetch and prepare release notes
+  local release_notes=""
+  if [[ "$CHANNEL" == "stable" ]]; then
+    log ""
+    log "Fetching release notes from CHANGELOG.md..."
+    local changelog_content
+    changelog_content=$(fetch_changelog 2>&1)
+
+    if [[ -n "$changelog_content" && "$changelog_content" != *"Warning:"* ]]; then
+      local extracted_notes
+      extracted_notes=$(extract_release_notes "$next_version" "$changelog_content")
+
+      if [[ -n "$extracted_notes" ]]; then
+        release_notes="$extracted_notes"
+        log "Found release notes for version ${next_version}"
+      else
+        log "Warning: No release notes found in CHANGELOG for version ${next_version}, using default"
+        release_notes="Version ${next_version}"
+      fi
+    else
+      log "Warning: Could not fetch CHANGELOG, using default release notes"
+      release_notes="Version ${next_version}"
+    fi
+  else
+    # Beta channel: use simplified format
+    release_notes="Version ${next_version}"
+  fi
+
+  # Prompt user to edit release notes if not in dry-run or no-prompt mode
+  release_notes=$(prompt_release_notes "$release_notes")
+
   if $DRY_RUN; then
     log "[dry-run] Would update ${manifest}:"
     log "[dry-run]   version: \"${current_version}\" -> \"${next_version}\""
+    log "[dry-run]   releaseNotes:"
+    echo "$release_notes" | while IFS= read -r line; do
+      log "[dry-run]     $line"
+    done
     log "[dry-run] Would update ${compose} with new image digests:"
     for pair in "${new_pairs[@]}"; do
       svc="${pair%%=*}"
@@ -691,8 +362,11 @@ update_app() {
     return 0
   fi
 
+  # Update version
   sed_in_place -E "s/version: \".*\"/version: \"${next_version}\"/" "$manifest"
-  sed_in_place -E "s/Version .*/Version ${next_version}/" "$manifest" || true
+
+  # Update release notes in YAML
+  update_release_notes "$manifest" "$release_notes"
 
   update_compose_images "$compose" "${new_pairs[@]}"
 
@@ -700,57 +374,6 @@ update_app() {
   CHANGES_MADE=true
   log "Updated ${manifest} and ${compose}"
   return 0  # Return 0 to indicate changes were made
-}
-
-check_git_state() {
-  command -v git >/dev/null 2>&1 || err "git is required"
-  
-  if ! git rev-parse --git-dir >/dev/null 2>&1; then
-    err "Not a git repository"
-  fi
-}
-
-commit_and_push() {
-  local app_name
-  if [[ "$CHANNEL" == "stable" ]]; then
-    app_name="pluto-mining-pluto"
-  else
-    app_name="pluto-mining-pluto-next"
-  fi
-
-  check_git_state
-
-  local manifest="${STORE_ROOT}/${app_name}/umbrel-app.yml"
-  local compose="${STORE_ROOT}/${app_name}/docker-compose.yml"
-
-  # Check if there are any changes to commit for the specific files
-  if git diff --quiet "$manifest" "$compose"; then
-    log "No changes to commit."
-    return 0
-  fi
-
-  # Stage the specific files
-  git add "$manifest" "$compose"
-
-  # Generate commit message
-  local commit_msg="Update Pluto (${CHANNEL}) to app version ${NEW_APP_VERSION}
-
-Re-resolved image digests from registry"
-
-  # Commit
-  if git commit -m "$commit_msg"; then
-    log "Committed changes"
-  else
-    err "Failed to commit changes"
-  fi
-
-  # Push
-  log "Pushing changes..."
-  if git push; then
-    log "Pushed changes successfully"
-  else
-    err "Failed to push changes. Make sure you have push access to the repository."
-  fi
 }
 
 main() {
