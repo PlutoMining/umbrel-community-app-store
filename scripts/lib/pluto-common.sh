@@ -15,7 +15,7 @@ CHANGELOG_CACHE=""
 
 # Logging functions
 log() {
-  echo "[update-pluto-from-registry] $*"
+  echo "[update-pluto-from-registry] $*" >&2
 }
 
 err() {

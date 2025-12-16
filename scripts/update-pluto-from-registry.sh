@@ -278,7 +278,8 @@ update_app() {
   
   # Parse current app version and bump accordingly
   local major minor patch
-  IFS='.' read -r major minor patch <<<"${current_version%%-*}"
+  local current_base="${current_version%%-*}"
+  IFS='.' read -r major minor patch <<<"$current_base"
   
   case "$highest_change" in
     major)
@@ -295,17 +296,25 @@ update_app() {
       ;;
   esac
   
+  local new_base="${major}.${minor}.${patch}"
+
   if [[ "$CHANNEL" == "stable" ]]; then
-    next_version="${major}.${minor}.${patch}"
+    next_version="$new_base"
   else
-    # For beta, append -beta.0 or increment beta number
-    local beta_suffix="${current_version#*-}"
-    if [[ "$beta_suffix" =~ ^beta\.([0-9]+)$ ]]; then
-      local beta_num="${BASH_REMATCH[1]}"
-      beta_num=$((beta_num + 1))
-      next_version="${major}.${minor}.${patch}-beta.${beta_num}"
+    # For beta: if base version changed, reset to beta.0; otherwise increment beta number
+    if [[ "$new_base" != "$current_base" ]]; then
+      # Base version changed, reset beta to 0
+      next_version="${new_base}-beta.0"
     else
-      next_version="${major}.${minor}.${patch}-beta.0"
+      # Base version unchanged, increment beta number
+      local beta_suffix="${current_version#*-}"
+      if [[ "$beta_suffix" =~ ^beta\.([0-9]+)$ ]]; then
+        local beta_num="${BASH_REMATCH[1]}"
+        beta_num=$((beta_num + 1))
+        next_version="${new_base}-beta.${beta_num}"
+      else
+        next_version="${new_base}-beta.0"
+      fi
     fi
   fi
 
