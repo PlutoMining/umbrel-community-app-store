@@ -2,7 +2,7 @@ manifestVersion: 1
 id: pluto-mining-pluto
 name: Pluto
 category: bitcoin
-version: "1.3.3"
+version: "1.3.4"
 tagline: Pluto
 icon: https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto/images/icon.jpg
 description: >
@@ -24,7 +24,15 @@ gallery:
 path: ""
 defaultPassword: ""
 releaseNotes: >
-  Version 1.3.3
+  
+  ----------------------------------------
+  Version 1.3.4
+  ----------------------------------------
+  
+  Version 1.3.4
+  
+  - Fix efficiency in overall dashboard
+  - Fix rpm in grafana dashboard template for bitaxe
 submitter: Pluto
 submission:
   defaultUsername: admin
