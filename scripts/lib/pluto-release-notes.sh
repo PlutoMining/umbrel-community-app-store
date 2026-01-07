@@ -10,7 +10,8 @@ clean_release_notes() {
   # - Log message lines (containing [update-pluto-from-registry])
   # - Separator lines (lines with only dashes, hyphens, or mostly dashes)
   #   Match: lines that are 10+ dashes/hyphens (with optional spaces)
-  notes=$(echo "$notes" | awk '
+  local dash_char="-"
+  notes=$(echo "$notes" | awk -v dash="$dash_char" '
     {
       # Remove leading/trailing spaces for pattern matching
       trimmed = $0
@@ -23,12 +24,14 @@ clean_release_notes() {
       if (trimmed ~ /\[update-pluto-from-registry\]/) next
 
       # Skip separator lines: lines that are mostly dashes (10+ dashes)
-      # Remove all dashes and hyphens, if result is empty or only spaces, it's a separator
+      # Remove whitespace, then remove dashes using variable
       temp = trimmed
-      gsub(/[-]+/, "", temp)
-      gsub(/[[:space:]]+/, "", temp)
-      if (length(temp) == 0 && length(trimmed) >= 10) {
-        next  # This is a separator line, skip it
+      gsub(/[[:blank:]]/, "", temp)
+      if (length(temp) >= 10) {
+        gsub(dash, "", temp)
+        if (length(temp) == 0) {
+          next  # Only dashes and spaces, this is a separator line
+        }
       }
 
       print $0
@@ -38,18 +41,21 @@ clean_release_notes() {
   # Remove duplicate consecutive "Version X.Y.Z" lines
   # If the same version line appears consecutively, keep only the first one
   notes=$(echo "$notes" | awk '
+    BEGIN { prev_line = "" }
     {
       # Pattern to match version lines: "Version X.Y.Z" or "Version X.Y.Z-beta.N"
-      if ($0 ~ /^[[:space:]]*Version[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+(-[^[:space:]]+)?[[:space:]]*$/) {
-        if (prev_line != $0) {
-          print $0
-          prev_line = $0
-        }
-        # Skip if it's the same as previous line
+      # Match lines starting with Version followed by version numbers
+      is_version = ($0 ~ /^[[:space:]]*Version[[:space:]]+[0-9]+\.[0-9]+\.[0-9]/)
+      if (is_version && prev_line == $0) {
+        # Skip duplicate version line
+        next
+      }
+      if (is_version) {
+        prev_line = $0
       } else {
-        print $0
         prev_line = ""
       }
+      print $0
     }
   ')
 

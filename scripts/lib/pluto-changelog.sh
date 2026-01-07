@@ -64,26 +64,30 @@ extract_release_notes() {
   # Remove beta suffix for stable version lookup (e.g., 1.3.4-beta.0 -> 1.3.4)
   local base_version="${version%-beta.*}"
   
+  # Escape dots in version for regex matching
+  local escaped_version="${base_version//./\\.}"
+
   # Try to match version patterns like:
-  # ## [1.3.4] or ## [1.3.4-beta.0] or ## 1.3.4 or ## v1.3.4
-  # Handle both with and without brackets, with and without v prefix
+  # # 1.3.5 (2026-01-07) or ## [1.3.4] or ## [1.3.4-beta.0] or ## 1.3.4 or ## v1.3.4
+  # Handle single #, double ##, triple ###, with and without brackets, with and without v prefix, with optional date
   local release_section=""
   
   # Try different patterns in order of likelihood
-  for pattern in "## \\[${base_version}\\]" "## \\[v${base_version}\\]" "## ${base_version}" "## v${base_version}" "### \\[${base_version}\\]" "### ${base_version}"; do
+  # Note: patterns with date like "# 1.3.5 (date)" will match the version part before the date
+  for pattern in "#[[:space:]]+${escaped_version}[[:space:]]*" "#[[:space:]]+\\[${escaped_version}\\][[:space:]]*" "##[[:space:]]+\\[${escaped_version}\\][[:space:]]*" "##[[:space:]]+\\[v${escaped_version}\\][[:space:]]*" "##[[:space:]]+${escaped_version}[[:space:]]*" "##[[:space:]]+v${escaped_version}[[:space:]]*" "###[[:space:]]+\\[${escaped_version}\\][[:space:]]*" "###[[:space:]]+${escaped_version}[[:space:]]*"; do
     release_section=$(echo "$changelog_content" | awk -v pattern="$pattern" '
       BEGIN { in_section=0 }
-      $0 ~ "^[[:space:]]*" pattern "[[:space:]]*" {
+      $0 ~ "^[[:space:]]*" pattern {
         in_section=1
         next
       }
-      in_section && /^[[:space:]]*##[[:space:]]/ {
-        # Next version section found (## or ###), stop
+      in_section && /^[[:space:]]*#[[:space:]]+[0-9]/ {
+        # Next version section found (starts with # followed by space and digit), stop
         exit
       }
       in_section {
-        # Print content lines (skip version header lines)
-        if ($0 !~ /^[[:space:]]*##/) {
+        # Print content lines (skip version header lines that match the pattern)
+        if ($0 !~ /^[[:space:]]*#[[:space:]]+[0-9]/) {
           print
         }
       }
