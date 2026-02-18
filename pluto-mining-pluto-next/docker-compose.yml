@@ -8,7 +8,7 @@ services:
     restart: on-failure
 
   mock:
-    image: ghcr.io/plutomining/pluto-mock:0.7.0-rc.2
+    image: ghcr.io/plutomining/pluto-mock:1.0.0-beta.0@sha256:6c1a764c994477203fc70e5a4fdb5a5e061a29bbb84b2b1c7935a38a768b483c
     ports:
       - "7670:7670"
       - "7651:7651"
@@ -30,7 +30,8 @@ services:
     user: "1000:1000"
 
   discovery:
-    image: ghcr.io/plutomining/pluto-discovery:1.1.3-beta.0@sha256:eb3f57325319f91d14b5fd88c02d86b5e4f5ad80e0082ba1b771a414790fb19c
+    image: ghcr.io/plutomining/pluto-discovery:2.0.0-beta.0@sha256:5f04d73a85a29f69cc6b5a4f16400f713c621ae57745c62792e9eb3cfec167ea
+    container_name: pluto-mining-pluto-next_discovery_1
     network_mode: "host"
     pid: host
     cap_add:
@@ -41,12 +42,13 @@ services:
       - PORT=7675
       - DETECT_MOCK_DEVICES=true
       - MOCK_DISCOVERY_HOST=http://172.17.0.1:7670
+      - PYASIC_BRIDGE_HOST=http://localhost:8000
     volumes:
       - ${APP_DATA_DIR}/data/leveldb:/home/node/app/data
     user: "1000:1000"
 
   backend:
-    image: ghcr.io/plutomining/pluto-backend:1.1.3-beta.0@sha256:8458391957c809806f20504025ff04b508d97493ace5bde527329b1be0e21918
+    image: ghcr.io/plutomining/pluto-backend:3.0.0-beta.0@sha256:b2b86aeb043fda0c054b78a67abb765f2e51c3c80595bd79771bf4f5523a83fe
     container_name: pluto-mining-pluto-next_backend_1
     pid: host
     restart: on-failure
@@ -54,20 +56,19 @@ services:
       - PORT=7676
       - AUTO_LISTEN=true
       - DISCOVERY_SERVICE_HOST=http://172.17.0.1:7675
-      - GF_HOST=http://pluto-mining-pluto-next_grafana_1:3000
       - DELETE_DATA_ON_DEVICE_REMOVE=true
+      - PYASIC_BRIDGE_HOST=http://pluto-mining-pluto-next_pyasic-bridge_1:8000
     volumes:
       - ${APP_DATA_DIR}/data/leveldb:/home/node/app/data
-      - ${APP_DATA_DIR}/data/grafana:/home/node/app/grafana
     depends_on:
       prometheus:
         condition: service_healthy
-      grafana:
+      pyasic-bridge:
         condition: service_healthy
     user: "1000:1000"
 
   frontend:
-    image: ghcr.io/plutomining/pluto-frontend:1.1.5-beta.0@sha256:3dfa45c9774f807eaf2bdc84db40d057542e09585d2ae03ff188db5b833ad4e0
+    image: ghcr.io/plutomining/pluto-frontend:3.0.0-beta.1@sha256:bbe8561a5090c95199903379256af42f95b2b5a9087e484293be005ddc8600ce
     container_name: pluto-mining-pluto-next_frontend_1
     pid: host
     restart: on-failure
@@ -75,15 +76,19 @@ services:
       - backend
     environment:
       - PORT=7677
-      - GF_HOST=http://pluto-mining-pluto-next_grafana_1:3000
       - BACKEND_DESTINATION_HOST=http://pluto-mining-pluto-next_backend_1:7676
     volumes:
       - ${APP_DATA_DIR}/umbrel-app.yml:/tmp/umbrel-app.yml:ro
     user: "1000:1000"
 
   prometheus:
-    image: ghcr.io/plutomining/pluto-prometheus:1.1.2@sha256:64bdc2c383e17df9925fe4fbe0dd2972b52616dcfb51489f0aa487307f19c53c
+    image: ghcr.io/plutomining/pluto-prometheus:1.2.0-beta.3@sha256:9d6d864939e2e1b85703ea0a3f78c8e7dc87ac16c3983673dc3326689bae77fc
     container_name: pluto-mining-pluto-next_prometheus_1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--storage.tsdb.retention.size=5GB"
     volumes:
       - ${APP_DATA_DIR}/data/prometheus:/prometheus
       - ${APP_DATA_DIR}/data/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -97,26 +102,18 @@ services:
       retries: 5
     user: "1000:1000"
 
-  grafana:
-    image: ghcr.io/plutomining/pluto-grafana:1.1.4-beta.0@sha256:fb99f32a668e81fcfa4a899f63346baf6d43c9dd5cff00e700732380f7da0634
-    container_name: pluto-mining-pluto-next_grafana_1
-    pid: host
+  pyasic-bridge:
+    image: ghcr.io/plutomining/pluto-pyasic-bridge:1.0.0-beta.2@sha256:02781d7d33cb26937352005dfa6f079508cc9fe0df2482ce04b887608aae712a
+    container_name: pluto-mining-pluto-next_pyasic-bridge_1
+    ports:
+      - "8000:8000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${APP_PASSWORD}
-      - GF_INSTALL_PLUGINS=marcusolsson-treemap-panel
-    volumes:
-      - ${APP_DATA_DIR}/data/grafana:/var/lib/grafana
-      - ${APP_DATA_DIR}/data/grafana/provisioning/datasources/main.yaml:/etc/grafana/provisioning/datasources/main.yaml:ro
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - "wget --spider --quiet http://localhost:3000/api/health || exit 1"
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
+      interval: 30s
+      timeout: 3s
       retries: 5
-    depends_on:
-      prometheus:
-        condition: service_healthy
+      start_period: 10s
     user: "1000:1000"
-
