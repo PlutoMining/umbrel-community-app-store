@@ -48,7 +48,7 @@ services:
     user: "1000:1000"
 
   backend:
-    image: ghcr.io/plutomining/pluto-backend:3.0.0-beta.0@sha256:b2b86aeb043fda0c054b78a67abb765f2e51c3c80595bd79771bf4f5523a83fe
+    image: ghcr.io/plutomining/pluto-backend:3.0.0-beta.1@sha256:190601b57b4d24317c0b39bdbacbee6e4c7aa310ef73540a0620c880f07df737
     container_name: pluto-mining-pluto-next_backend_1
     pid: host
     restart: on-failure
@@ -68,7 +68,7 @@ services:
     user: "1000:1000"
 
   frontend:
-    image: ghcr.io/plutomining/pluto-frontend:3.0.0-beta.1@sha256:bbe8561a5090c95199903379256af42f95b2b5a9087e484293be005ddc8600ce
+    image: ghcr.io/plutomining/pluto-frontend:3.0.0-beta.3@sha256:11efc72897d201703f08b5371ce42607395e9854840771f7f0119a1ac111126e
     container_name: pluto-mining-pluto-next_frontend_1
     pid: host
     restart: on-failure

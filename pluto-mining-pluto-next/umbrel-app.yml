@@ -2,7 +2,7 @@ manifestVersion: 1
 id: pluto-mining-pluto-next
 name: Pluto Beta
 category: bitcoin
-version: "2.0.0-beta.2"
+version: "2.0.0-beta.3"
 tagline: Pluto
 icon: https://raw.githubusercontent.com/PlutoMining/umbrel-community-app-store/master/pluto-mining-pluto-next/images/icon.jpg
 description: >
