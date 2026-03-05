@@ -8,7 +8,7 @@ services:
     restart: on-failure
 
   mock:
-    image: ghcr.io/plutomining/pluto-mock:1.0.0-beta.0@sha256:6c1a764c994477203fc70e5a4fdb5a5e061a29bbb84b2b1c7935a38a768b483c
+    image: ghcr.io/plutomining/pluto-mock:1.0.0-beta.3@sha256:8a4fb011e8507b5acbf50e7b18eb94b82087c759da3482547a5ec0259d3b2a51
     ports:
       - "7670:7670"
       - "7651:7651"
@@ -30,7 +30,7 @@ services:
     user: "1000:1000"
 
   discovery:
-    image: ghcr.io/plutomining/pluto-discovery:2.0.0-beta.0@sha256:5f04d73a85a29f69cc6b5a4f16400f713c621ae57745c62792e9eb3cfec167ea
+    image: ghcr.io/plutomining/pluto-discovery:2.0.0-beta.2@sha256:7cce6438dfeadd60ba10fdf722ce791763146ce679f2bea1f90efd0bf4fb81d5
     container_name: pluto-mining-pluto-next_discovery_1
     network_mode: "host"
     pid: host
@@ -48,7 +48,7 @@ services:
     user: "1000:1000"
 
   backend:
-    image: ghcr.io/plutomining/pluto-backend:3.0.0-beta.1@sha256:190601b57b4d24317c0b39bdbacbee6e4c7aa310ef73540a0620c880f07df737
+    image: ghcr.io/plutomining/pluto-backend:3.0.0-beta.4@sha256:4b937928b07c73d6fe3dc981c09da39bb0d0c199bc1eb09947df50d08056ca32
     container_name: pluto-mining-pluto-next_backend_1
     pid: host
     restart: on-failure
@@ -58,6 +58,7 @@ services:
       - DISCOVERY_SERVICE_HOST=http://172.17.0.1:7675
       - DELETE_DATA_ON_DEVICE_REMOVE=true
       - PYASIC_BRIDGE_HOST=http://pluto-mining-pluto-next_pyasic-bridge_1:8000
+      - PROMETHEUS_HOST=http://pluto-mining-pluto-next_prometheus_1:9090
     volumes:
       - ${APP_DATA_DIR}/data/leveldb:/home/node/app/data
     depends_on:
@@ -68,7 +69,7 @@ services:
     user: "1000:1000"
 
   frontend:
-    image: ghcr.io/plutomining/pluto-frontend:3.0.0-beta.3@sha256:11efc72897d201703f08b5371ce42607395e9854840771f7f0119a1ac111126e
+    image: ghcr.io/plutomining/pluto-frontend:3.0.0-beta.5@sha256:7b3cfd2bb6dbcd8c42f368bfe352f84ccdce8bc758eadaecc1f1c31a4d9d978f
     container_name: pluto-mining-pluto-next_frontend_1
     pid: host
     restart: on-failure
@@ -82,7 +83,7 @@ services:
     user: "1000:1000"
 
   prometheus:
-    image: ghcr.io/plutomining/pluto-prometheus:1.2.0-beta.3@sha256:9d6d864939e2e1b85703ea0a3f78c8e7dc87ac16c3983673dc3326689bae77fc
+    image: ghcr.io/plutomining/pluto-prometheus:1.2.0-beta.4@sha256:268a55e812ff14bdde911b6c59dd0cc7961faa44d022d02bba9a2f7510ffc968
     container_name: pluto-mining-pluto-next_prometheus_1
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -103,7 +104,7 @@ services:
     user: "1000:1000"
 
   pyasic-bridge:
-    image: ghcr.io/plutomining/pluto-pyasic-bridge:1.0.0-beta.2@sha256:02781d7d33cb26937352005dfa6f079508cc9fe0df2482ce04b887608aae712a
+    image: ghcr.io/plutomining/pluto-pyasic-bridge:1.0.0-beta.4@sha256:06da2c9b5be60653882d43f91f799e9fdbf81fd6ba358e17c3474a4b708d3582
     container_name: pluto-mining-pluto-next_pyasic-bridge_1
     ports:
       - "8000:8000"
